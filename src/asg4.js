@@ -3,7 +3,7 @@ Mariah Balandran
 mbalandr@ucsc.edu
 
 Notes to Grader:
-Closely followed video tutorial playlist provided at the top of the assignment. Only cubes and spheres from my blocky animal included because my pyramids did not use the draw trangle functions, so they could not respond to lighting. Skipped assignment 3 (approved by Professor Davis) so I had no camera class and just used the globalRotateMatrix from assignment 2.
+Closely followed video tutorial playlist provided at the top of the assignment. Only cubes and spheres from my blocky animal included because my pyramids did not use the draw trangle functions, so they could not respond to lighting. Skipped assignment 3 (approved by Professor Davis) so I had no camera class and just used the globalRotateMatrix from assignment 2. Referenced ChatGPT for help with spotlight.
 */
 
 // ColoredPoint.js (c) 2012 matsuda
@@ -32,11 +32,20 @@ var FSHADER_SOURCE = `
   uniform int u_whichColor;
   varying vec3 v_Normal;
   varying vec4 v_vPos;
+
   uniform vec3 u_lightPos;
   uniform vec3 u_cameraPos;
   uniform bool u_specON;
   uniform bool u_lightON;
   uniform vec3 u_lightColor;
+
+  // Spotlight uniforms
+  uniform vec3 u_spotlightPos;
+  uniform bool u_spotlightON;
+  uniform vec3 u_spotlightDir;
+  uniform float u_spotlightCutoff;
+  uniform float u_spotlightOuterCutoff;
+  uniform vec3 u_spotlightColor;
   
   void main() {
     if (u_whichColor == -1) {
@@ -81,8 +90,24 @@ var FSHADER_SOURCE = `
       specular = pow(max(dot(E, R), 0.0), 10.0);
     }
 
+    // if (u_lightON) {
+    //   gl_FragColor = vec4((specular + diffuse + ambient) * u_lightColor, 1.0);
+    // }
+    
+    vec3 lighting = (specular + diffuse + ambient) * u_lightColor;
+
+    // Spotlight calculation
+    vec3 spotDir = normalize(vec3(v_vPos) - u_spotlightPos);
+    float theta = dot(spotDir, normalize(-u_spotlightDir));
+
+    float epsilon = u_spotlightCutoff - u_spotlightOuterCutoff;
+    float intensity = smoothstep(u_spotlightOuterCutoff, u_spotlightCutoff, theta);
+
     if (u_lightON) {
-      gl_FragColor = vec4((specular + diffuse + ambient) * u_lightColor, 1.0);
+        if (u_spotlightON) {
+            lighting += (intensity * u_spotlightColor);
+        }
+        gl_FragColor = vec4(lighting, 1.0);
     }
   }`;
 
@@ -104,6 +129,15 @@ var u_lightPos, u_specON, u_lightON, u_lightColor;
 var g_lightPos = [0,1,-2];
 var g_lightON = true;
 var g_lightColor = [1.0,1.0,1.0];
+
+// Spotlight Variables
+var u_spotlightPos, u_spotlightDir, u_spotlightCutoff, u_spotlightOuterCutoff, u_spotlightColor, u_spotlightON;
+var g_spotlightPos = [-0.75, 1, -0.75];
+var g_spotlightDir = [0.0, 1.0, 0.0];
+var g_spotlightCutoff = Math.cos(15 * (Math.PI / 180));
+var g_spotlightOuterCutoff = Math.cos(25 * (Math.PI / 180));
+var g_spotlightColor = [1.0, 1.0, 1.0];
+var g_spotlightON = true;
 
 // Color Variables
 var shirtColor, headColor, eyeColor, hairColor, skirtColor, legColor, shinColor, shoeColor;
@@ -463,6 +497,48 @@ function connectGLSL() {
         return;
     }
 
+    // Get the storage location of u_spotlightPos
+    u_spotlightPos = gl.getUniformLocation(gl.program, "u_spotlightPos");
+    if (!u_spotlightPos) {
+        console.log("Failed to get the storage location of u_spotlightPos");
+        return;
+    }
+
+    // Get the storage location of u_spotlightDir
+    u_spotlightDir = gl.getUniformLocation(gl.program, "u_spotlightDir");
+    if (!u_spotlightDir) {
+        console.log("Failed to get the storage location of u_spotlightDir");
+        return;
+    }
+
+    // Get the storage location of u_spotlightColor
+    u_spotlightColor = gl.getUniformLocation(gl.program, "u_spotlightColor");
+    if (!u_spotlightColor) {
+        console.log("Failed to get the storage location of u_spotlightColor");
+        return;
+    }
+
+    // Get the storage location of u_spotlightCutoff
+    u_spotlightCutoff = gl.getUniformLocation(gl.program, "u_spotlightCutoff");
+    if (!u_spotlightCutoff) {
+        console.log("Failed to get the storage location of u_spotlightCutoff");
+        return;
+    }
+
+    // Get the storage location of u_spotlightOuterCutoff
+    u_spotlightOuterCutoff = gl.getUniformLocation(gl.program, "u_spotlightOuterCutoff");
+    if (!u_spotlightOuterCutoff) {
+        console.log("Failed to get the storage location of u_spotlightOuterCutoff");
+        return;
+    }
+
+    // Get the storage location of u_spotlightON
+    u_spotlightON = gl.getUniformLocation(gl.program, "u_spotlightON");
+    if (!u_spotlightON) {
+        console.log("Failed to get the storage location of u_spotlightON");
+        return;
+    }
+
 
     // Set identity matrix as default
     var identityM = new Matrix4();
@@ -529,9 +605,17 @@ function renderShapes() {
 
     gl.uniform1i(u_lightON, g_lightON);
 
+    gl.uniform3f(u_spotlightPos, g_spotlightPos[0], g_spotlightPos[1], g_spotlightPos[2]); // Spotlight position
+    gl.uniform3f(u_spotlightDir, g_spotlightDir[0], g_spotlightDir[1], g_spotlightDir[2],); // Direction the spotlight is pointing
+    gl.uniform1f(u_spotlightCutoff, g_spotlightCutoff); // Inner cutoff (15 degrees)
+    gl.uniform1f(u_spotlightOuterCutoff, g_spotlightOuterCutoff); // Outer cutoff (25 degrees)
+    gl.uniform3f(u_spotlightColor, g_spotlightColor[0], g_spotlightColor[1], g_spotlightColor[2]); // White light
+
+    gl.uniform1i(u_spotlightON, g_spotlightON);
+
     // Light
     var light = new Cube();
-    light.color = [2.0, 2.0, 0.0, 1.0];
+    light.color = [1.0, 1.0, 0.0, 1.0];
     light.colorNum = -1;
     light.specON = false;
     if (g_normalON) light.colorNum = 0;
@@ -539,6 +623,17 @@ function renderShapes() {
     light.matrix.scale(0.2,-0.2,-0.2);
     light.matrix.translate(-0.5,-0.5,-0.5);
     light.render();
+
+    // Spotlight
+    var spot = new Cube();
+    spot.color = [1.0, 0.0, 0.0, 1.0];
+    spot.colorNum = -1;
+    spot.specON = false;
+    if (g_normalON) spot.colorNum = 0;
+    spot.matrix.translate(g_spotlightPos[0],g_spotlightPos[1],g_spotlightPos[2]);
+    spot.matrix.scale(0.2,-0.2,-0.2);
+    spot.matrix.translate(-0.5,-0.5,-0.5);
+    spot.render();
 
     // Floor plane
     var floor = new Cube();
@@ -761,6 +856,11 @@ function resetScene() {
 
     g_lightPos = [0,1,-2];
 
+    g_spotlightON = true;
+    g_spotlightColor = [1.0,1.0,1.0];
+
+    g_spotlightPos = [-0.75, 1, -0.75];
+
     g_headAngle = 0;
     g_headPosY = 0;
     g_eyePosX = 0;
@@ -877,6 +977,15 @@ function htmlActions() {
             g_lightON = true;
         } else {
             g_lightON = false;
+        }
+    };
+
+    //Button Events (Spotlight ON)
+    document.getElementById('slON').onclick = function() {
+        if (g_spotlightON === false) {
+            g_spotlightON = true;
+        } else {
+            g_spotlightON = false;
         }
     };
 
